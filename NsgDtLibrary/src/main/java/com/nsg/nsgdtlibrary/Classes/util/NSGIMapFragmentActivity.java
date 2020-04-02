@@ -705,8 +705,8 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                                                         }
                                                         //*****************************************
                                                         //If vehicle reaches destination
-//                                                        AlertDestination(currentGpsPosition);
-                                                        isReachedDestination(currentGpsPosition, DestinationNode);
+                                                        AlertDestination(currentGpsPosition);
+                                                        //isReachedDestination(currentGpsPosition, DestinationNode);
                                                         //*****************************************
 
                                                         if (offsetDistance > 2 && bearing > 0.0) {
@@ -1826,7 +1826,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
         }
     }
 
-    public void AlertDestination_NotUsing(LatLng currentGpsPosition) {
+    public void AlertDestination(LatLng currentGpsPosition) {
 
         if (destinationGeoFenceCoordinatesList != null && destinationGeoFenceCoordinatesList.size() > 2) {
             //PolygonOptions polygonOptions = new PolygonOptions().addAll(DestinationGeoFenceCordinatesList);
