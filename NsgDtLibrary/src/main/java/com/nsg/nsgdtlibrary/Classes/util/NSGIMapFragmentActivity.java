@@ -1,4 +1,4 @@
-package com.nsg.nsgdtlibrary.Classes.util.NSGI_RORO;
+package com.nsg.nsgdtlibrary.Classes.util;
 
 import android.Manifest.permission;
 import android.animation.ValueAnimator;
@@ -77,8 +77,6 @@ import com.nsg.nsgdtlibrary.Classes.activities.GpsUtils;
 import com.nsg.nsgdtlibrary.Classes.database.db.SqlHandler;
 import com.nsg.nsgdtlibrary.Classes.database.dto.EdgeDataT;
 import com.nsg.nsgdtlibrary.Classes.database.dto.RouteT;
-import com.nsg.nsgdtlibrary.Classes.util.MapEvents;
-import com.nsg.nsgdtlibrary.Classes.util.RouteMessage;
 import com.nsg.nsgdtlibrary.R;
 
 import org.json.JSONArray;
@@ -213,9 +211,9 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
     static int CURRENT_ROUTE_WIDTH = 25;
     static int DEVIATED_ROUTE_WIDTH = 25;
 
-    List<com.nsg.nsgdtlibrary.Classes.util.RouteMessage> messageContainer = new ArrayList<>();
+    List<RouteMessage> messageContainer = new ArrayList<>();
 
-    List<com.nsg.nsgdtlibrary.Classes.util.RouteMessage> messageContainerTemp = new ArrayList<>();
+    List<RouteMessage> messageContainerTemp = new ArrayList<>();
 
     PolylineOptions currentPolylineOptions = new PolylineOptions();
     Polyline currentPolylineGraphics = null;
@@ -1137,7 +1135,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
         long distanceToTravel = 0l;
 
         LatLng perpendicularPoint = findNearestPointOnLine(currentRouteData, currentPosition);
-        com.nsg.nsgdtlibrary.Classes.util.RouteMessage routeMessage = null;
+        RouteMessage routeMessage = null;
         for (int i = 0; i < messageContainer.size(); i++) {
             routeMessage = messageContainer.get(i);
             if (PolyUtil.isLocationOnPath(perpendicularPoint, routeMessage.getLine(), false)) {
@@ -1701,7 +1699,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
                     currentDeviatedRouteData.addAll(cloneCoordinates(arrayOfCoordinates));
 
-                    messageContainerTemp.add(new com.nsg.nsgdtlibrary.Classes.util.RouteMessage(GeometryText, arrayOfCoordinates));
+                    messageContainerTemp.add(new RouteMessage(GeometryText, arrayOfCoordinates));
                 }
                 removeDuplicatesRouteDeviated(currentDeviatedRouteData);
             }
