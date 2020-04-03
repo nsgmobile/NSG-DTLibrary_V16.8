@@ -1,4 +1,4 @@
-package com.nsg.nsgdtlibrary.Classes.util;
+package com.nsg.nsgdtlibrary.Classes.util.NSGI_RORO;
 
 import android.Manifest.permission;
 import android.animation.ValueAnimator;
@@ -77,6 +77,8 @@ import com.nsg.nsgdtlibrary.Classes.activities.GpsUtils;
 import com.nsg.nsgdtlibrary.Classes.database.db.SqlHandler;
 import com.nsg.nsgdtlibrary.Classes.database.dto.EdgeDataT;
 import com.nsg.nsgdtlibrary.Classes.database.dto.RouteT;
+import com.nsg.nsgdtlibrary.Classes.util.MapEvents;
+import com.nsg.nsgdtlibrary.Classes.util.RouteMessage;
 import com.nsg.nsgdtlibrary.R;
 
 import org.json.JSONArray;
@@ -119,6 +121,10 @@ import static java.lang.Math.atan2;
 import static java.lang.Math.cos;
 import static java.lang.Math.sin;
 
+//import com.google.android.gms.location.LocationListener;
+//import static android.Manifest.permission.ACCESS_FINE_LOCATION;
+//import static android.Manifest.permission.READ_EXTERNAL_STORAGE;
+//import static android.content.Context.LOCATION_SERVICE;
 
 public class NSGIMapFragmentActivity extends Fragment implements View.OnClickListener {
     private boolean isAlertShown = false;
@@ -139,13 +145,15 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
     private List<LatLng> convertedPoints;
     private Marker sourceMarker, destinationMarker;
     private List<EdgeDataT> edgeDataList;
-    private List<LatLng> deviatedRouteData = new ArrayList<>();
+
     private List<RouteT> RouteDataList;
     private int routeDeviationDistance;
     private Circle mCircle = null;
     Bitmap mMarkerIcon;
 
     private List<LatLng> currentRouteData = new ArrayList<LatLng>();
+    private List<LatLng> currentDeviatedRouteData = new ArrayList<>();
+    private List<LatLng> deviatedRouteData = new ArrayList<>();
 
     HashMap<String, String> AllPointEdgeNo;
     HashMap<String, String> AllPointEdgeDistaces;
@@ -158,7 +166,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
     private double maxSpeed = 30;
     private String BASE_MAP_URL_FORMAT;
     private LatLng SourceNode, DestinationNode;
-    LatLng currentGpsPosition, RouteDeviatedSourcePosition;
+    LatLng currentGpsPosition;
     float azimuthInDegress;
     Timer myTimer = new Timer();
     private String stNode, endNode, routeDeviatedDT_URL = "", AuthorisationKey;
@@ -184,7 +192,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
     private String GeoFenceCordinates;
     private boolean routeAPIHit = false;
     List<LatLng> commonPoints = new ArrayList<LatLng>();
-    List<LatLng> new_unCommonPoints = new ArrayList<LatLng>();
+    List<LatLng> uncommonPoints = new ArrayList<LatLng>();
 
     //
     List<Double> consDistList = new ArrayList<>();
@@ -195,26 +203,27 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
     private EditText dynamic_changeValue;
     private Button submit;
 
-    //    List<Integer> colors = new ArrayList<Integer>();
     long startTimestamp;
     int estimatedRemainingTime = 0;
     private boolean isRoutePlotted = false;
 
     static int CURRENT_ROUTE_COLOR = Color.CYAN;
-    static int PREVIOUS_ROUTE_COLOR = Color.parseColor("#B0C4DE");  //LIGHTSTEELBLUE
+    static int DEVIATED_ROUTE_COLOR = Color.RED;
 
     static int CURRENT_ROUTE_WIDTH = 25;
-    static int PREVIOUS_ROUTE_WIDTH = 10;
+    static int DEVIATED_ROUTE_WIDTH = 25;
 
-    List<RouteMessage> messageContainer = new ArrayList<>();
+    List<com.nsg.nsgdtlibrary.Classes.util.RouteMessage> messageContainer = new ArrayList<>();
 
-    List<RouteMessage> messageContainerTemp = new ArrayList<>();
+    List<com.nsg.nsgdtlibrary.Classes.util.RouteMessage> messageContainerTemp = new ArrayList<>();
 
     PolylineOptions currentPolylineOptions = new PolylineOptions();
     Polyline currentPolylineGraphics = null;
 
-    PolylineOptions previousPolylineOptions = new PolylineOptions();
-    Polyline previousPolylineGraphics = null;
+    PolylineOptions deviatedPolylineOptions = new PolylineOptions();
+    Polyline deviatedPolylineGraphics = null;
+
+    private static int MINIMUM_VEHICLE_SPEED = 3; // KM/HR
 
     public interface FragmentToActivity {
         // String communicate(String comm);
@@ -523,24 +532,36 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
             try {
 
-                if (mMap != null && isMapLoaded == true && isNavigationStarted == false) {
+                if (mMap != null && isMapLoaded && !isNavigationStarted) {
 
                     //To enable Direction text for every 8000ms
                     if (isTimerStarted = true) {
                         myTimer.schedule(new TimerTask() {
                             @Override
                             public void run() {
-                                if (currentGpsPosition != null && DestinationNode != null) {
-                                    if (islocationControlEnabled == false && isContinuoslyOutOfTrack == false) {
+                                if (currentGpsPosition != null && DestinationNode != null && isNavigationStarted) {
+                                    if (!islocationControlEnabled && !isContinuoslyOutOfTrack) {
 
                                         displayNavigationMessage(currentGpsPosition);
                                         // if (time != null && !time.toString().isEmpty() && estimatedRemainingTime > 0) {
+                                        // ETA Calculation
+                                        if (vehicleSpeed > MINIMUM_VEHICLE_SPEED && startTimestamp > 0) {
+                                            calculateETA(startTimestamp, SourceNode, DestinationNode, currentGpsPosition, currentRouteData, (float) vehicleSpeed);
+                                        }
                                         if (estimatedRemainingTime > 0) {
                                             if (getActivity() != null) {
                                                 new Handler(Looper.getMainLooper()).post(new Runnable() {
                                                     @Override
                                                     public void run() {
-                                                        Toast toast = Toast.makeText(getActivity().getApplicationContext(), "ETA : " + estimatedRemainingTime + " SEC", Toast.LENGTH_LONG);
+                                                        String etaMessage = "";
+                                                        if(estimatedRemainingTime > 60) {
+                                                            int minute = estimatedRemainingTime / 60;
+                                                            int sec = estimatedRemainingTime % 60;
+                                                            etaMessage = "ETA: " + minute + "min. " + sec + "sec";
+                                                        } else {
+                                                            etaMessage = "ETA: " + estimatedRemainingTime + "sec";
+                                                        }
+                                                        Toast toast = Toast.makeText(getActivity().getApplicationContext(), etaMessage, Toast.LENGTH_SHORT);
                                                         toast.setMargin(70, 50);
                                                         toast.setGravity(Gravity.BOTTOM, 0, 120);
                                                         toast.show();
@@ -700,13 +721,13 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
 
                                                         //ETA Calculation
-                                                        if (vehicleSpeed > 0) {
-                                                            calculateETA(startTimestamp, SourceNode, DestinationNode, currentGpsPosition, currentRouteData, (float) vehicleSpeed);
-                                                        }
+//                                                        if (vehicleSpeed > 0) {
+//                                                            calculateETA(startTimestamp, SourceNode, DestinationNode, currentGpsPosition, currentRouteData, (float) vehicleSpeed);
+//                                                        }
                                                         //*****************************************
                                                         //If vehicle reaches destination
-                                                        AlertDestination(currentGpsPosition);
-                                                        //isReachedDestination(currentGpsPosition, DestinationNode);
+                                                        alertDestination(currentGpsPosition);
+                                                        //isReachedDestination(currentPerpendicularPoint, DestinationNode);
                                                         //*****************************************
 
                                                         if (offsetDistance > 2 && bearing > 0.0) {
@@ -847,7 +868,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
         try {
             islocationControlEnabled = true;
             if (SourceNode != null && DestinationNode != null) {
-                if (mMap != null && isNavigationStarted == true && islocationControlEnabled == true) {
+                if (mMap != null && isNavigationStarted && islocationControlEnabled) {
                     isNavigationStarted = false;
                     islocationControlEnabled = false;
                     //  Log.e("STOP NAVIGATION", "STOP NAVIGATION INNER VALUE --"+ islocationControlEnabled);
@@ -972,14 +993,14 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
     public double calculateDistanceAlongLineFromStart(List<LatLng> polyline, LatLng position) {
         double distance = 0d;
 
-        if(!PolyUtil.isLocationOnPath(position, polyline, false)) {
+        if (!PolyUtil.isLocationOnPath(position, polyline, false)) {
             position = findNearestPointOnLine(polyline, position);
         }
 
 
-        if(isSameCoordinate(position, polyline.get(0))) {
+        if (isSameCoordinate(position, polyline.get(0))) {
             return 0.0d;
-        } else if(isSameCoordinate(position, polyline.get(polyline.size() - 1))) {
+        } else if (isSameCoordinate(position, polyline.get(polyline.size() - 1))) {
             return SphericalUtil.computeLength(polyline);
         }
 
@@ -987,7 +1008,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
             LatLng pointA = polyline.get(i);
             LatLng pointB = polyline.get(i + 1);
 
-            if(PolyUtil.isLocationOnPath(position, Arrays.asList(pointA, pointB), false)) {
+            if (PolyUtil.isLocationOnPath(position, Arrays.asList(pointA, pointB), false)) {
                 distance += SphericalUtil.computeDistanceBetween(pointA, position);
                 break;
             } else {
@@ -1116,7 +1137,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
         long distanceToTravel = 0l;
 
         LatLng perpendicularPoint = findNearestPointOnLine(currentRouteData, currentPosition);
-        RouteMessage routeMessage = null;
+        com.nsg.nsgdtlibrary.Classes.util.RouteMessage routeMessage = null;
         for (int i = 0; i < messageContainer.size(); i++) {
             routeMessage = messageContainer.get(i);
             if (PolyUtil.isLocationOnPath(perpendicularPoint, routeMessage.getLine(), false)) {
@@ -1193,7 +1214,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
 //        long startTimestamp = System.currentTimeMillis();
 
-        if (routeLine.size() == 0) {
+        if (routeLine.size() == 0 || startTimestamp == 0) {
             return;
         }
 
@@ -1267,7 +1288,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
         List<LatLng> mergedRoute = new ArrayList<>();
 
         if (oldRoute == null || oldRoute.size() == 0) {
-            return newRoute;
+            return cloneCoordinates(newRoute);
         }
 
         if (newRoute == null
@@ -1365,8 +1386,8 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                 String destLongiPos = String.valueOf(destinationPosition.longitude);
                 final String destPoint = destLongiPos.concat(" ").concat(destLatPos);
 
-                RouteDeviatedSourcePosition = cloneCoordinate(currentGpsPosition);
-                Log.e("Route Deviation", "routeDiation SOURCE Position  ###### " + RouteDeviatedSourcePosition);
+                LatLng routeDeviatedSourcePosition = cloneCoordinate(currentGpsPosition);
+                Log.e("Route Deviation", "routeDiation SOURCE Position  ###### " + routeDeviatedSourcePosition);
                 // Log.e("returnedDistance", "RouteDiationPosition  ###### " + routeDiationPosition);
                 //   Log.e("returnedDistance", "Destination Position --------- " + destPoint);
                 //  DestinationPosition = new LatLng(destLat, destLng);
@@ -1378,7 +1399,6 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                         public void processFinish(Object output) {
 
                             try {
-
 
                                 // initialize global variables and save data to DB
                                 getRouteDetails((String) output);
@@ -1393,7 +1413,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
                                 Log.e("ROUTE DEV MKR UPDATE", " WITHIN ROUTE API HIT----");
 
-                                if (deviatedRouteData != null && deviatedRouteData.size() > 0) {
+                                if (currentDeviatedRouteData != null && currentDeviatedRouteData.size() > 0) {
 
                                     Log.e("ROUTE DEV MKR UPDATE", " AFTER RECVD DATA FROM API----");
 
@@ -1407,20 +1427,20 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                                     Log.e("DESTINATION POSITION", "DESTINATION POSITION" + DestinationNode);
                                     if (currentRouteDataLocal != null) {
                                         Log.e("ROUTE DEV MKR UPDATE", "BEFORE VERIFICATION OF OLD AND NEW ROUTE");
-                                        compareDeviatedRouteWithCurrentRoute(currentRouteDataLocal, deviatedRouteData);
+                                        compareDeviatedRouteWithCurrentRoute(currentRouteDataLocal, currentDeviatedRouteData);
 
                                         Log.e("List Verification", "List Verification commonPoints --  DATA " + commonPoints.size());
-                                        Log.e("List Verification", "List Verification  new_unCommonPoints -- DATA " + new_unCommonPoints.size());
+                                        Log.e("List Verification", "List Verification  new_unCommonPoints -- DATA " + uncommonPoints.size());
 
                                         Log.e("ROUTE DEV MKR UPDATE", "BEFORE PLOTTING DEVIATED ROUTE");
 
-                                        Log.e("ROUTE DEV MKR UPDATE", "BEFORE PLOTTING DEVIATED ROUTE, UNCOMMON POINTS SIZE:" + new_unCommonPoints.size());
+                                        Log.e("ROUTE DEV MKR UPDATE", "BEFORE PLOTTING DEVIATED ROUTE, UNCOMMON POINTS SIZE:" + uncommonPoints.size());
 
-                                        if (new_unCommonPoints.size() > 1) {
+                                        if (uncommonPoints.size() > 1) {
 
                                             //  Log.e("Route Deviation", " IS ROUTE VERIFY  ###### " + " Route COINSIDENCE");
                                             //Changed by SKC, merge logic
-                                            List<LatLng> tmpVar = mergeRoutes(currentRouteDataLocal, deviatedRouteData, RouteDeviatedSourcePosition);
+                                            List<LatLng> tmpVar = mergeRoutes(currentRouteDataLocal, currentDeviatedRouteData, routeDeviatedSourcePosition);
                                             currentRouteData.clear();
                                             currentRouteData.addAll(tmpVar);
 
@@ -1428,39 +1448,43 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                                             messageContainer.clear();
                                             messageContainer.addAll(messageContainerTemp);
 
-                                            new_unCommonPoints.add(0, RouteDeviatedSourcePosition);
+                                            if(deviatedRouteData.size() == 0) {
+                                                // adding the perpendicular point to start,  for the first deviation
+                                                currentDeviatedRouteData.add(0, nearest_LatLng_deviation);
+                                            }
+
+                                            //add the deviated route
+                                            tmpVar = mergeRoutes(deviatedRouteData, currentDeviatedRouteData, routeDeviatedSourcePosition);
+                                            deviatedRouteData.clear();
+                                            deviatedRouteData.addAll(tmpVar);
+
+                                            // new_unCommonPoints.add(0, RouteDeviatedSourcePosition);
                                             // new_unCommonPoints.add(DestinationNode);
                                             // will fill the gap
-                                            new_unCommonPoints.add(0, nearest_LatLng_deviation);
-                                            Random random = new Random();
+                                            // new_unCommonPoints.add(0, nearest_LatLng_deviation);
+                                            // Random random = new Random();
                                             // int random_colour = new Random().nextInt(colors.size());
                                             // Integer color = colors.get(random);
                                             //Plotting uncommon points as a line here
                                             if (mPositionMarker != null && mPositionMarker.isVisible() && !isRoutePlotted) {
 
-                                                if (previousPolylineGraphics == null) {
-                                                    previousPolylineOptions.addAll(cloneCoordinates(currentRouteDataLocal));
-                                                    previousPolylineOptions.color(PREVIOUS_ROUTE_COLOR).width(PREVIOUS_ROUTE_WIDTH);
-                                                    previousPolylineGraphics = mMap.addPolyline(previousPolylineOptions);
-//                                                previousPolylineGraphics.setJointType(JointType.ROUND);
-                                                } else {
-                                                    previousPolylineGraphics.setPoints(cloneCoordinates(currentRouteDataLocal));
-                                                    previousPolylineGraphics.setColor(PREVIOUS_ROUTE_COLOR);
-                                                    previousPolylineGraphics.setWidth(PREVIOUS_ROUTE_WIDTH);
+                                                if (deviatedRouteData.size() > 1) {
+                                                    if (deviatedPolylineGraphics == null) {
+                                                        deviatedPolylineOptions.addAll(cloneCoordinates(deviatedRouteData));
+                                                        deviatedPolylineOptions.color(DEVIATED_ROUTE_COLOR).width(DEVIATED_ROUTE_WIDTH);
+                                                        deviatedPolylineGraphics = mMap.addPolyline(deviatedPolylineOptions);
+                                                    } else {
+                                                        deviatedPolylineGraphics.setPoints(cloneCoordinates(deviatedRouteData));
+                                                        deviatedPolylineGraphics.setColor(DEVIATED_ROUTE_COLOR);
+                                                        deviatedPolylineGraphics.setWidth(DEVIATED_ROUTE_WIDTH);
+                                                    }
                                                 }
 
-                                                //updating the current route
-                                                currentPolylineGraphics.setPoints(cloneCoordinates(currentRouteData));
-                                                currentPolylineGraphics.setColor(CURRENT_ROUTE_COLOR);
-                                                currentPolylineGraphics.setWidth(CURRENT_ROUTE_WIDTH);
+                                                //updating the current route // NO NEED
+                                                // currentPolylineGraphics.setPoints(cloneCoordinates(currentRouteData));
+                                                // currentPolylineGraphics.setColor(CURRENT_ROUTE_COLOR);
+                                                // currentPolylineGraphics.setWidth(CURRENT_ROUTE_WIDTH);
                                                 // currentPolylineGraphics.setZIndex(1f);
-
-                                                //  PolylineOptions polylineOptions = new PolylineOptions();
-//                                            polylineOptions.addAll(new_unCommonPoints);
-//                                            Polyline polyline = mMap.addPolyline(polylineOptions);
-//                                            polylineOptions.color(RouteColor.getColor()).width(30);
-//                                            mMap.addPolyline(polylineOptions);
-//                                            polyline.setJointType(JointType.ROUND);
 
                                                 Log.e("ROUTE DEV MKR UPDATE", "DEVIATED ROUTE PLOTTED");
                                                 // isContinuoslyOutOfTrack = true;
@@ -1486,14 +1510,16 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                                                     toast.setView(layout);
                                                     toast.show();
                                                     StringBuilder routeDeviatedAlert = new StringBuilder();
-                                                    routeDeviatedAlert.append("ROUTE DEVIATED" + " RouteDeviatedSourcePosition : " + RouteDeviatedSourcePosition);
+                                                    routeDeviatedAlert.append("ROUTE DEVIATED" + " RouteDeviatedSourcePosition : " + routeDeviatedSourcePosition);
                                                     sendData(MapEvents.ALERTVALUE_3, MapEvents.ALERTTYPE_3);
                                                     Log.e("Route Deviation", " Route Deviation Alert POSTED" + MapEvents.ALERTVALUE_3);
                                                     Log.e(" END OF DEV MSG LOG", "ENTERED INTO DEVIATION MSG LOG");
                                                 }
                                             }
+                                        }
 
-                                        } else if (commonPoints.size() > 0) {
+                                        /*
+                                        else if (commonPoints.size() > 0) {
                                             if (mPositionMarker != null && mPositionMarker.isVisible() == true) {
 
                                                 if (currentPolylineGraphics == null) {
@@ -1513,11 +1539,11 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 //                                            polylineOptions.addAll(deviatedRouteData);
 //                                            Polyline polyline = mMap.addPolyline(polylineOptions);
 //                                            polylineOptions.color(CURRENT_ROUTE_COLOR).width(CURRENT_ROUTE_WIDTH);
-////                                            mMap.addPolyline(polylineOptions);
+//                                           mMap.addPolyline(polylineOptions);
 //                                            polyline.setJointType(JointType.ROUND);
                                                 Log.e("ROUTE DEV MKR UPDATE", "ORIGINAL ROUTE PLOTTED");
                                             }
-                                        }
+                                        }*/
                                     }
                                 }
                             } catch (Exception ex) {
@@ -1550,18 +1576,23 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
         }
     }
 
-    public void compareDeviatedRouteWithCurrentRoute(List<LatLng> edgeWithoutDuplicates, List<LatLng> routeDeviationPointsForComparision) {
+    public void compareDeviatedRouteWithCurrentRoute(List<LatLng> currentRoute, List<LatLng> deviatedRoute) {
 
         commonPoints.clear();
-        new_unCommonPoints.clear();
+        uncommonPoints.clear();
 
-        for (int i = 0; i < routeDeviationPointsForComparision.size(); i++) {
-            LatLng deviatedRoutePoint = routeDeviationPointsForComparision.get(i);
+        if (currentRoute.size() == 0) {
+            uncommonPoints.addAll(cloneCoordinates(deviatedRoute));
+            return;
+        }
+
+        for (int i = 0; i < deviatedRoute.size(); i++) {
+            LatLng deviatedRoutePoint = deviatedRoute.get(i);
             Log.e("DEVIATION COMPARISION", "DEVIATION COMPARISION BEFORE TRUNCATED NEW " + deviatedRoutePoint);
 
             boolean innerFlag = false;
-            for (int j = 0; j < edgeWithoutDuplicates.size(); j++) {
-                LatLng oldRoutePoint = edgeWithoutDuplicates.get(j);
+            for (int j = 0; j < currentRoute.size(); j++) {
+                LatLng oldRoutePoint = currentRoute.get(j);
                 Log.e("DEVIATION COMPARISION", "DEVIATION COMPARISION BEFORE TRUNCATED OLD " + oldRoutePoint);
 
                 if (isSameCoordinate(deviatedRoutePoint, oldRoutePoint)) {
@@ -1571,11 +1602,11 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
             }
             if (!innerFlag) {
-                new_unCommonPoints.add(cloneCoordinate(deviatedRoutePoint));
+                uncommonPoints.add(cloneCoordinate(deviatedRoutePoint));
                 Log.e("DESTINATION POSITION", "DESTINATION POSITION" + DestinationNode);
             }
         }
-        Log.e("COMMON AND UNCOMMON", "SIZES, common:" + commonPoints.size() + "Uncommon" + new_unCommonPoints.size());
+        Log.e("COMMON AND UNCOMMON", "SIZES, common:" + commonPoints.size() + "Uncommon" + uncommonPoints.size());
 
     }
 
@@ -1634,7 +1665,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
                 JSONArray jSonRoutes = new JSONArray(jsonObject.getString("Route"));
 
-                deviatedRouteData.clear();
+                currentDeviatedRouteData.clear();
                 messageContainerTemp.clear();
 
                 for (int i = 0; i < jSonRoutes.length(); i++) {
@@ -1668,11 +1699,11 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                         arrayOfCoordinates.add(new LatLng(x, y));
                     }
 
-                    deviatedRouteData.addAll(cloneCoordinates(arrayOfCoordinates));
+                    currentDeviatedRouteData.addAll(cloneCoordinates(arrayOfCoordinates));
 
-                    messageContainerTemp.add(new RouteMessage(GeometryText, arrayOfCoordinates));
+                    messageContainerTemp.add(new com.nsg.nsgdtlibrary.Classes.util.RouteMessage(GeometryText, arrayOfCoordinates));
                 }
-                removeDuplicatesRouteDeviated(deviatedRouteData);
+                removeDuplicatesRouteDeviated(currentDeviatedRouteData);
             }
         } catch (JSONException e) {
             e.printStackTrace();
@@ -1795,13 +1826,13 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
         return points;
     }
 
-    public void isReachedDestination(LatLng currentPosition, LatLng destinationPoint) {
+    public void isReachedDestination_NotUsing(LatLng currentPosition, LatLng destinationPoint) {
 
         if (destinationGeoFenceCoordinatesList != null && destinationGeoFenceCoordinatesList.size() > 2) {
             //PolygonOptions polygonOptions = new PolygonOptions().addAll(DestinationGeoFenceCordinatesList);
             //mMap.addPolygon(polygonOptions);
             //polygonOptions.fillColor(Color.CYAN);
-            isLieInGeofence = (SphericalUtil.computeDistanceBetween(currentPosition, destinationPoint) < 5.1);
+            isLieInGeofence = (SphericalUtil.computeDistanceBetween(currentPosition, destinationPoint) < 5.1 );
             Log.e("Destination Geofence", "Destination Geofence : " + isLieInGeofence);
             if (getActivity() != null) {
                 if (isAlertShown == false) {
@@ -1826,14 +1857,14 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
         }
     }
 
-    public void AlertDestination(LatLng currentGpsPosition) {
+    public void alertDestination(LatLng currentGpsPosition) {
 
         if (destinationGeoFenceCoordinatesList != null && destinationGeoFenceCoordinatesList.size() > 2) {
             //PolygonOptions polygonOptions = new PolygonOptions().addAll(DestinationGeoFenceCordinatesList);
             //mMap.addPolygon(polygonOptions);
             //polygonOptions.fillColor(Color.CYAN);
             isLieInGeofence = false;
-            isLieInGeofence = DestinationPolygonGeofence(currentGpsPosition, destinationGeoFenceCoordinatesList);
+            isLieInGeofence = pointWithinPolygon(currentGpsPosition, destinationGeoFenceCoordinatesList);
             Log.e("Destination Geofence", "Destination Geofence : " + isLieInGeofence);
             if (getActivity() != null) {
                 if (isAlertShown == false) {
@@ -1849,6 +1880,8 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
                         Log.e("AlertDestination", "Alert Destination" + "DESTINATION REACHED--");
                         isAlertShown = true;
+                        //added by SKC
+                        isNavigationStarted = false;
                     } else {
                         //Log.e("AlertDestination", "Alert Destination" + "DESTINATION NOT REACHED--");
                     }
@@ -1860,7 +1893,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
     }
 
 
-    public boolean DestinationPolygonGeofence(LatLng destinationPt, List<LatLng> destinationPtsList) {
+    public boolean pointWithinPolygon(LatLng destinationPt, List<LatLng> destinationPtsList) {
         boolean geofenceValue = false;
         if (destinationPtsList != null && destinationPtsList.size() > 0) {
             geofenceValue = PolyUtil.containsLocation(destinationPt, destinationPtsList, false);
@@ -1883,7 +1916,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
     private interface LatLngInterpolator {
         LatLng interpolate(float fraction, LatLng a, LatLng b);
 
-        class LinearFixed implements NSGIMapFragmentActivity.LatLngInterpolator {
+        class LinearFixed implements LatLngInterpolator {
             @Override
             public LatLng interpolate(float fraction, LatLng a, LatLng b) {
                 double lat = (b.latitude - a.latitude) * fraction + a.latitude;
