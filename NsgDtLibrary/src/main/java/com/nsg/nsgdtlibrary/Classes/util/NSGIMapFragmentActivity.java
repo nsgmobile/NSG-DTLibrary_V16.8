@@ -1266,7 +1266,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
         if (etaElapsed > 0) {
             isETACrossed = true;
-            sendData(MapEvents.ALERTVALUE_2, MapEvents.ALERTTYPE_2);
+            sendData(time.toString(), MapEvents.ALERTTYPE_2);
         }
 
     }
