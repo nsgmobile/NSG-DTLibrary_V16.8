@@ -721,7 +721,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                                                         //isReachedDestination(currentPerpendicularPoint, DestinationNode);
                                                         //*****************************************
 
-                                                        if (offsetDistance > 2 && bearing > 0.0) {
+                                                        if (offsetDistance > 5 && bearing > 0.0) {
                                                             CameraPosition currentPlace = new CameraPosition.Builder()
                                                                     .target(shadowTgt)
                                                                     .bearing(bearing).tilt(65.5f).zoom(18)
@@ -818,7 +818,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                                                 Log.e("Fallow GPS ROUTE", "offsetDistance : " + offsetDistance);
                                                 LatLng shadowTgt = SphericalUtil.computeOffset(currentGpsPosition, offsetDistance, bearing);
                                                 Log.e("Fallow GPS ROUTE", "shadowTgt : " + shadowTgt.latitude + "," + shadowTgt.longitude);
-                                                if (offsetDistance > 2 && bearing > 0.0) {
+                                                if (offsetDistance > 5 && bearing > 0.0) {
                                                     CameraPosition currentPlace_main = new CameraPosition.Builder()
                                                             .target(shadowTgt)
                                                             .bearing(bearing).tilt(65.5f).zoom(18)
@@ -1266,7 +1266,11 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
         if (etaElapsed > 0) {
             isETACrossed = true;
+            //sendData(time.toString(), MapEvents.ALERTTYPE_2);
+            String ETA_CROSSED_ALERT=" ETA CROSSED " + etaElapsed +" SEC " + isETACrossed;
             sendData(time.toString(), MapEvents.ALERTTYPE_2);
+            //sendData(MapEvents.ALERTVALUE_2, MapEvents.ALERTTYPE_2);
+            sendData(ETA_CROSSED_ALERT, MapEvents.ALERTTYPE_7);
         }
 
     }
