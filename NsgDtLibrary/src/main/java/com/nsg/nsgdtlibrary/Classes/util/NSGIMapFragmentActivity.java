@@ -74,6 +74,8 @@ import com.nsg.nsgdtlibrary.Classes.activities.ExpandedMBTilesTileProvider;
 import com.nsg.nsgdtlibrary.Classes.activities.GpsUtils;
 import com.nsg.nsgdtlibrary.Classes.database.dto.EdgeDataT;
 import com.nsg.nsgdtlibrary.Classes.database.dto.RouteT;
+import com.nsg.nsgdtlibrary.Classes.util.MapEvents;
+import com.nsg.nsgdtlibrary.Classes.util.RouteMessage;
 import com.nsg.nsgdtlibrary.R;
 
 import org.json.JSONArray;
@@ -196,9 +198,9 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
     private static int CURRENT_ROUTE_WIDTH = 25;
     private static int DEVIATED_ROUTE_WIDTH = 25;
 
-    List<RouteMessage> messageContainer = new ArrayList<>();
+    List<com.nsg.nsgdtlibrary.Classes.util.RouteMessage> messageContainer = new ArrayList<>();
 
-    List<RouteMessage> messageContainerTemp = new ArrayList<>();
+    List<com.nsg.nsgdtlibrary.Classes.util.RouteMessage> messageContainerTemp = new ArrayList<>();
 
     PolylineOptions currentPolylineOptions = new PolylineOptions();
     Polyline currentPolylineGraphics = null;
@@ -206,7 +208,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
     PolylineOptions deviatedPolylineOptions = new PolylineOptions();
     Polyline deviatedPolylineGraphics = null;
 
-    private static int MINIMUM_VEHICLE_SPEED = 3; // KM/HR
+    private static double MINIMUM_VEHICLE_SPEED = 30d; // KM/HR
 
     private int estimatedTimeInSeconds = 0;
     private static int AVERAGE_SPEED = 30;
@@ -541,7 +543,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                                         displayNavigationMessage(currentGpsPosition);
                                         // if (time != null && !time.toString().isEmpty() && estimatedRemainingTime > 0) {
                                         // ETA Calculation
-                                        calculateETA(startTimestamp, currentGpsPosition, currentRouteData);
+
                                         if (estimatedRemainingTime > 0) {
                                             if (getActivity() != null) {
                                                 new Handler(Looper.getMainLooper()).post(new Runnable() {
@@ -558,7 +560,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                                                         Toast toast = Toast.makeText(getActivity().getApplicationContext(), etaMessage, Toast.LENGTH_SHORT);
                                                         toast.setMargin(70, 50);
                                                         toast.setGravity(Gravity.BOTTOM, 0, 120);
-                                                        if(isETACrossed) {
+                                                        if (isETACrossed) {
                                                             toast.getView().setBackgroundColor(Color.RED);
                                                         }
                                                         toast.show();
@@ -685,7 +687,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                                                 // Log.e("CurrentGpsPoint", " currentGpsPosition ------ " + currentGpsPosition);
 
                                                 if (OldNearestPosition != null) {
-                                                    if (islocationControlEnabled == false) {
+                                                    if (!islocationControlEnabled) {
                                                         Log.e("CurrentGpsPoint", " curren FRM START NAVI ------ " + currentGpsPosition);
                                                         // Log.e("CurrentGpsPoint", " Old  FRM START NAVI ------ " + OldNearestPosition);
                                                         Log.e("CurrentGpsPoint", " CGPS " + currentGpsPosition);
@@ -715,6 +717,9 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
                                                         //ETA Calculation
 //                                                      calculateETA(startTimestamp, currentGpsPosition, currentRouteData);
+                                                        if (timeTakenTillNow >= 5) {
+                                                            calculateETA(startTimestamp, currentGpsPosition, currentRouteData);
+                                                        }
                                                         //*****************************************
                                                         //If vehicle reaches destination
                                                         alertDestination(currentGpsPosition);
@@ -1118,7 +1123,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
         long distanceToTravel = 0l;
 
         LatLng perpendicularPoint = findNearestPointOnLine(currentRouteData, currentPosition);
-        RouteMessage routeMessage = null;
+        com.nsg.nsgdtlibrary.Classes.util.RouteMessage routeMessage = null;
         for (int i = 0; i < messageContainer.size(); i++) {
             routeMessage = messageContainer.get(i);
             if (PolyUtil.isLocationOnPath(perpendicularPoint, routeMessage.getLine(), false)) {
@@ -1192,8 +1197,6 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
     public void calculateETA(long startTimestamp, LatLng currentPosition, List<LatLng> routeLine) {
 
-//        long startTimestamp = System.currentTimeMillis();
-
         if (routeLine.size() == 0 || startTimestamp == 0 || nearlyFirstGPSPosition == null) {
             return;
         }
@@ -1208,6 +1211,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
         int etaElapsed = 0;
         double remainingDistance = 0d;
+        double minimumSpeed = (NSGIMapFragmentActivity.MINIMUM_VEHICLE_SPEED * 1000d) / 3600d;
         if (splitRoute.size() == 2) {
             remainingDistance = SphericalUtil.computeLength(splitRoute.get(1));
             double travelledDistance = SphericalUtil.computeLength(splitRoute.get(0));
@@ -1218,8 +1222,10 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
                 vehicleSpeed = travelledDistance / timeTakenTillNow;
             }
 
-            if (vehicleSpeed > (NSGIMapFragmentActivity.MINIMUM_VEHICLE_SPEED * 1000) / 3600) {
+            if (vehicleSpeed > minimumSpeed) {
                 estimatedRemainingTime = (int) (remainingDistance / vehicleSpeed);   // in seconds
+            } else {
+                estimatedRemainingTime = (int) (remainingDistance / minimumSpeed);   // in seconds
             }
         }
 
@@ -1227,30 +1233,30 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
             etaElapsed = timeTakenTillNow - estimatedTimeInSeconds;
         }
 
-        time.append("Distance : ").append(totalDistance + " Meters ")
-                .append("::").append("total predicted time : ")
-                .append(estimatedTimeInSeconds + " SEC ")
-                .append("::").append(" Distance To Travel : ")
-                .append(estimatedRemainingTime + "Sec").append("::")
-                .append("Elapsed Time : ").append(etaElapsed).append("::")
-                .append("currentGpsPosition : ").append(currentPosition).append("\n");
+
+//        time.append("Distance : ").append(totalDistance + " Meters ")
+//                .append("::").append("total predicted time : ")
+//                .append(estimatedTimeInSeconds + " SEC ")
+//                .append("::").append(" Distance To Travel : ")
+//                .append(estimatedRemainingTime + "Sec").append("::")
+//                .append("Elapsed Time : ").append(etaElapsed).append("::")
+//                .append("currentGpsPosition : ").append(currentPosition).append("\n");
 
         StringBuilder timeTmp = new StringBuilder();
-        timeTmp.append("Distance : ").append(totalDistance + " Meters ")
-                .append("::").append("total predicted time : ")
-                .append(estimatedTimeInSeconds + " SEC ")
-                .append("::").append(" Distance To Travel : ")
-                .append(remainingDistance + "Sec").append("::")
-                .append("Elapsed Time : ").append(etaElapsed).append("::")
-
+        timeTmp.append("predicted time : ")
+                .append(estimatedTimeInSeconds + " SEC ").append("::")
+                .append("Elapsed time: ").append(etaElapsed).append("::")
                 .append("timeTakenTillNow: ").append(timeTakenTillNow).append("::")
-                .append("totalDistance: ").append(totalDistance).append("::")
-                .append("total estimatedTime: ").append(estimatedTimeInSeconds).append("::")
-                .append("remainingDistance: ").append(remainingDistance).append("::")
                 .append("estimatedRemainingTime: ").append(estimatedRemainingTime).append("::")
-                .append("vehicleSpeed: ").append(vehicleSpeed).append("::")
-
-                .append("currentGpsPosition : ").append(currentPosition).append("\n");
+                .append("totalDistance: ").append(totalDistance).append("::")
+                .append("remainingDistance: ").append(remainingDistance).append("::")
+                .append("vehicleSpeed (mtr./sec): ").append(vehicleSpeed).append("::");
+        if (vehicleSpeed > minimumSpeed) {
+            timeTmp.append("used vehicleSpeed (mtr./sec): ").append(vehicleSpeed).append("::");
+        } else {
+            timeTmp.append("used vehicleSpeed (mtr./sec): ").append(minimumSpeed).append("::");
+        }
+        timeTmp.append("currentGpsPosition : ").append(currentPosition.toString()).append("\n");
 
 
         Log.e("ETA", "ETA ALERT ---- " + timeTmp);
@@ -1264,13 +1270,14 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
         Log.e("ETA", "vehicleSpeed ---- " + vehicleSpeed);
         Log.e("ETA", "timeTakenTillNow ---- " + timeTakenTillNow);
 
+        sendData(timeTmp.toString(), MapEvents.ALERTTYPE_2);
+
         if (etaElapsed > 0) {
             isETACrossed = true;
-            //sendData(time.toString(), MapEvents.ALERTTYPE_2);
-            String ETA_CROSSED_ALERT=" ETA CROSSED " + etaElapsed +" SEC " + isETACrossed;
-            sendData(time.toString(), MapEvents.ALERTTYPE_2);
-            //sendData(MapEvents.ALERTVALUE_2, MapEvents.ALERTTYPE_2);
-            sendData(ETA_CROSSED_ALERT, MapEvents.ALERTTYPE_7);
+            String ALERT_ETACROSSED= "ETA-CROSSED"+ etaElapsed+"SEC";
+            sendData(ALERT_ETACROSSED.toString(), MapEvents.ALERTTYPE_7);
+            Log.e("ALERTTYPE_7 ","ALERTTYPE_7 :: "+ ALERT_ETACROSSED);
+           // sendData(timeTmp.toString(), MapEvents.ALERTTYPE_7);
         }
 
     }
@@ -1541,7 +1548,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
             LatLng deviatedRoutePoint = deviatedRoute.get(i);
             Log.e("DEVIATION COMPARISION", "DEVIATION COMPARISION BEFORE TRUNCATED NEW " + deviatedRoutePoint);
 
-            if(PolyUtil.isLocationOnPath(deviatedRoutePoint, currentRoute, false)) {
+            if (PolyUtil.isLocationOnPath(deviatedRoutePoint, currentRoute, false)) {
                 commonPoints.add(cloneCoordinate(deviatedRoutePoint));
             } else {
                 uncommonPoints.add(cloneCoordinate(deviatedRoutePoint));
@@ -1661,7 +1668,7 @@ public class NSGIMapFragmentActivity extends Fragment implements View.OnClickLis
 
                     currentDeviatedRouteData.addAll(cloneCoordinates(arrayOfCoordinates));
 
-                    messageContainerTemp.add(new RouteMessage(GeometryText, arrayOfCoordinates));
+                    messageContainerTemp.add(new com.nsg.nsgdtlibrary.Classes.util.RouteMessage(GeometryText, arrayOfCoordinates));
                 }
                 removeDuplicatesRouteDeviated(currentDeviatedRouteData);
             }
